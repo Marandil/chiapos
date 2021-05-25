@@ -57,6 +57,15 @@ include_directories(
 
 add_library(fse ${FSE_FILES})
 
+include(CheckTypeSize)
+check_type_size("__int128" SIZEOF_INT128)
+check_type_size("long"     SIZEOF_LONG)
+
+# 32-bit support for fseek64
+IF(SIZEOF_LONG LESS 8)
+  add_compile_definitions(_FILE_OFFSET_BITS=64 USE_FSEEKO)
+ENDIF()
+
 IF (MSVC)
 IF (CMAKE_BUILD_TYPE STREQUAL "RELEASE")
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2 /Oy")
@@ -154,6 +163,14 @@ target_compile_features(fse PUBLIC cxx_std_17)
 target_compile_features(chiapos PUBLIC cxx_std_17)
 target_compile_features(RunTests PUBLIC cxx_std_17)
 
+IF(HAVE_SIZEOF_INT128)
+  add_compile_definitions(HAVE_INT128)
+ELSE()
+  target_link_libraries(chiapos PRIVATE uint128)
+  target_link_libraries(ProofOfSpace uint128)
+  target_link_libraries(RunTests uint128)
+ENDIF()
+
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   target_link_libraries(chiapos PRIVATE fse Threads::Threads)
   target_link_libraries(ProofOfSpace fse Threads::Threads)
@@ -167,9 +184,9 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
   target_link_libraries(ProofOfSpace fse Threads::Threads)
   target_link_libraries(RunTests fse Threads::Threads)
 elseif (MSVC)
-  target_link_libraries(chiapos PRIVATE fse Threads::Threads uint128)
-  target_link_libraries(ProofOfSpace fse Threads::Threads uint128)
-  target_link_libraries(RunTests fse Threads::Threads uint128)
+  target_link_libraries(chiapos PRIVATE fse Threads::Threads)
+  target_link_libraries(ProofOfSpace fse Threads::Threads)
+  target_link_libraries(RunTests fse Threads::Threads)
 else()
   target_link_libraries(chiapos PRIVATE fse stdc++fs Threads::Threads)
   target_link_libraries(ProofOfSpace fse stdc++fs Threads::Threads)

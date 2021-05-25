@@ -162,6 +162,10 @@ struct FileDisk {
             if ((!bReading) || (begin != readPos)) {
 #ifdef _WIN32
                 _fseeki64(f_, begin, SEEK_SET);
+#elif defined(USE_FSEEKO)
+                // fseeko() takes an off_t as offset, make sure it's wide enough
+                static_assert(sizeof(off_t) >= sizeof(begin));
+                ::fseeko(f_, begin, SEEK_SET);
 #else
                 // fseek() takes a long as offset, make sure it's wide enough
                 static_assert(sizeof(long) >= sizeof(begin));
@@ -197,6 +201,10 @@ struct FileDisk {
             if ((bReading) || (begin != writePos)) {
 #ifdef _WIN32
                 _fseeki64(f_, begin, SEEK_SET);
+#elif defined(USE_FSEEKO)
+                // fseeko() takes an off_t as offset, make sure it's wide enough
+                static_assert(sizeof(off_t) >= sizeof(begin));
+                ::fseeko(f_, begin, SEEK_SET);
 #else
                 // fseek() takes a long as offset, make sure it's wide enough
                 static_assert(sizeof(long) >= sizeof(begin));

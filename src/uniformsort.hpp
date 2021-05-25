@@ -93,10 +93,12 @@ namespace UniformSort {
             if (!IsPositionEmpty(memory + pos, entry_len)) {
                 // We've found an entry.
                 // write the stored entry itself.
-                memcpy(
-                    memory + entries_written * entry_len,
-                    memory + pos,
-                    entry_len);
+                if (entries_written * entry_len != pos) {
+                    memcpy(
+                        memory + entries_written * entry_len,
+                        memory + pos,
+                        entry_len);
+                }
                 entries_written++;
             }
         }
