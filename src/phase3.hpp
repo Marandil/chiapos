@@ -107,11 +107,11 @@ void WriteParkToFile(
 
 static inline constexpr size_t posctr2idx(size_t pos, size_t counter) {
 #if 1
-    size_t tmp = pos * kReadMinusWrite + counter;
+    size_t tmp = pos * kMaxMatchesSingleEntry + counter;
     assert(tmp < kReadMinusWrite * kMaxMatchesSingleEntry);
     return tmp;
 #else
-    return pos * kReadMinusWrite + counter;
+    return pos * kMaxMatchesSingleEntry + counter;
 #endif
 }
 
@@ -218,12 +218,14 @@ Phase3Results RunPhase3(
             strategy_t::quicksort_last);
 
         bool should_read_entry = true;
-        std::vector<uint64_t> left_new_pos(kCachedPositionsSize);
 
-        // Use dynamically allocated arrays to reduce stack usage
-        std::vector<uint64_t> old_sort_keys(kReadMinusWrite * kMaxMatchesSingleEntry);
-        std::vector<uint64_t> old_offsets(kReadMinusWrite * kMaxMatchesSingleEntry);
-        std::vector<uint16_t> old_counters(kReadMinusWrite);
+        // Use statically allocated arrays for smaller collections
+        /// and dynamically allocated arrays for larger to balance stack usage
+        std::array<uint64_t, kCachedPositionsSize> left_new_pos;
+        std::array<uint16_t, kReadMinusWrite> old_counters;
+        std::vector<uint64_t> old_sort_keys(kReadMinusWrite * kMaxMatchesSingleEntry, 0);
+        std::vector<uint64_t> old_offsets(kReadMinusWrite * kMaxMatchesSingleEntry, 0);
+        
         for (uint16_t &old_counter : old_counters) {
             old_counter = 0;
         }
@@ -279,10 +281,9 @@ Phase3Results RunPhase3(
                     }
                     if (entry_pos == current_pos) {
                         uint64_t const old_write_pos = entry_pos % kReadMinusWrite;
-                        uint16_t &old_counter = old_counters[old_write_pos];
+                        uint16_t const old_counter = old_counters[old_write_pos]++;
                         old_sort_keys[posctr2idx(old_write_pos, old_counter)] = entry_sort_key;
                         old_offsets[posctr2idx(old_write_pos, old_counter)] = (entry_pos + entry_offset);
-                        ++old_counter;
                     } else {
                         should_read_entry = false;
                         cached_entry_sort_key = entry_sort_key;
@@ -380,7 +381,7 @@ Phase3Results RunPhase3(
             // Make sure all files are removed
             L_sort_manager.reset();
         }
-        
+
         // In the second pass we read from R sort manager and write to L sort
         // manager, and they both handle table (table_index + 1)'s data. The
         // newly written table consists of (sort_key, new_pos). Add one extra
