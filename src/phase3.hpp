@@ -105,6 +105,16 @@ void WriteParkToFile(
     final_disk.Write(writer, (uint8_t *)park_buffer, park_size_bytes);
 }
 
+static inline constexpr size_t posctr2idx(size_t pos, size_t counter) {
+#if 1
+    size_t tmp = pos * kReadMinusWrite + counter;
+    assert(tmp < kReadMinusWrite * kMaxMatchesSingleEntry);
+    return tmp;
+#else
+    return pos * kReadMinusWrite + counter;
+#endif
+}
+
 // Compresses the plot file tables into the final file. In order to do this, entries must be
 // reorganized from the (pos, offset) bucket sorting order, to a more free line_point sorting
 // order. In (pos, offset ordering), we store two pointers two the previous table, (x, y) which
@@ -210,9 +220,10 @@ Phase3Results RunPhase3(
         bool should_read_entry = true;
         std::vector<uint64_t> left_new_pos(kCachedPositionsSize);
 
-        uint64_t old_sort_keys[kReadMinusWrite][kMaxMatchesSingleEntry];
-        uint64_t old_offsets[kReadMinusWrite][kMaxMatchesSingleEntry];
-        uint16_t old_counters[kReadMinusWrite];
+        // Use dynamically allocated arrays to reduce stack usage
+        std::vector<uint64_t> old_sort_keys(kReadMinusWrite * kMaxMatchesSingleEntry);
+        std::vector<uint64_t> old_offsets(kReadMinusWrite * kMaxMatchesSingleEntry);
+        std::vector<uint16_t> old_counters(kReadMinusWrite);
         for (uint16_t &old_counter : old_counters) {
             old_counter = 0;
         }
@@ -268,10 +279,10 @@ Phase3Results RunPhase3(
                     }
                     if (entry_pos == current_pos) {
                         uint64_t const old_write_pos = entry_pos % kReadMinusWrite;
-                        old_sort_keys[old_write_pos][old_counters[old_write_pos]] = entry_sort_key;
-                        old_offsets[old_write_pos][old_counters[old_write_pos]] =
-                            (entry_pos + entry_offset);
-                        ++old_counters[old_write_pos];
+                        uint16_t &old_counter = old_counters[old_write_pos];
+                        old_sort_keys[posctr2idx(old_write_pos, old_counter)] = entry_sort_key;
+                        old_offsets[posctr2idx(old_write_pos, old_counter)] = (entry_pos + entry_offset);
+                        ++old_counter;
                     } else {
                         should_read_entry = false;
                         cached_entry_sort_key = entry_sort_key;
@@ -319,7 +330,7 @@ Phase3Results RunPhase3(
                      counter < old_counters[write_pointer_pos % kReadMinusWrite];
                      counter++) {
                     uint64_t left_new_pos_2 = left_new_pos
-                        [old_offsets[write_pointer_pos % kReadMinusWrite][counter] %
+                        [old_offsets[posctr2idx(write_pointer_pos % kReadMinusWrite, counter)] %
                          kCachedPositionsSize];
 
                     // A line point is an encoding of two k bit values into one 2k bit value.
@@ -339,7 +350,7 @@ Phase3Results RunPhase3(
                     }
                     Bits to_write = Bits(line_point, line_point_size);
                     to_write.AppendValue(
-                        old_sort_keys[write_pointer_pos % kReadMinusWrite][counter],
+                        old_sort_keys[posctr2idx(write_pointer_pos % kReadMinusWrite, counter)],
                         right_sort_key_size);
 
                     R_sort_manager->AddToCache(to_write);
@@ -369,7 +380,7 @@ Phase3Results RunPhase3(
             // Make sure all files are removed
             L_sort_manager.reset();
         }
-
+        
         // In the second pass we read from R sort manager and write to L sort
         // manager, and they both handle table (table_index + 1)'s data. The
         // newly written table consists of (sort_key, new_pos). Add one extra
